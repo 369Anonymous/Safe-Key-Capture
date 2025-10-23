@@ -1,0 +1,109 @@
+"""
+safe_key_capture.py
+Safe demo: records keys ONLY while this tkinter window is focused.
+Writes timestamped entries to typed_log.txt in the same folder.
+
+Do NOT use this to capture other people's input without explicit, informed consent.
+"""
+
+import tkinter as tk
+from datetime import datetime
+from pathlib import Path
+import locale
+
+LOGFILE = Path(__file__).parent / "typed_log.txt"
+
+def now_iso_local():
+    # Use local time (human-friendly) with timezone-naive ISO format
+    try:
+        # Prefer ISO-like local time
+        return datetime.now().isoformat(sep=' ', timespec='seconds')
+    except Exception:
+        return datetime.utcnow().isoformat() + "Z"
+
+def log_key(event):
+    """
+    event.keysym: readable key name (e.g. 'a', 'Return', 'Shift_L')
+    event.char: actual character (may be '' for non-printable keys)
+    """
+    timestamp = now_iso_local()
+    keyname = event.keysym
+    char = repr(event.char)
+    line = f"{timestamp}\tkey={keyname}\tchar={char}\n"
+    try:
+        with open(LOGFILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception as e:
+        # If file write fails, show error in UI but keep running
+        status_var.set(f"Error writing log: {e}")
+    else:
+        status_var.set(f"Last: {timestamp} {keyname}")
+    # Show in the visible text area for transparency
+    log_text.insert(tk.END, line)
+    log_text.see(tk.END)
+
+def clear_log_display():
+    log_text.delete("1.0", tk.END)
+
+def toggle_logging():
+    global logging_enabled
+    logging_enabled = not logging_enabled
+    if logging_enabled:
+        root.bind_all("<Key>", log_wrapper)
+        btn_toggle.config(text="Disable Logging")
+        status_var.set("Logging enabled (window must be focused).")
+    else:
+        root.unbind_all("<Key>")
+        root.bind_all("<Key>", log_wrapper)  # keep wrapper bound for status only
+        btn_toggle.config(text="Enable Logging")
+        status_var.set("Logging disabled (on-screen capture only).")
+
+def log_wrapper(event):
+    # central wrapper to respect logging_enabled flag
+    if logging_enabled:
+        log_key(event)
+    else:
+        # update last-key status without writing when disabled
+        status_var.set(f"Seen (not saved): {event.keysym}")
+
+# --- GUI setup ---
+root = tk.Tk()
+root.title("Safe Key Capture Demo (visible & focused)")
+
+frame = tk.Frame(root, padx=10, pady=8)
+frame.pack(fill=tk.BOTH, expand=True)
+
+label = tk.Label(frame, text="Click the entry below (or this window) and type. Keys are recorded to 'typed_log.txt'.")
+label.pack(anchor="w")
+
+entry = tk.Entry(frame, width=60)
+entry.pack(fill=tk.X, pady=6)
+entry.focus_set()
+
+controls = tk.Frame(frame)
+controls.pack(fill=tk.X, pady=(0,6))
+
+logging_enabled = True
+btn_toggle = tk.Button(controls, text="Disable Logging", command=toggle_logging)
+btn_toggle.pack(side=tk.LEFT)
+
+btn_clear = tk.Button(controls, text="Clear on-screen log", command=clear_log_display)
+btn_clear.pack(side=tk.LEFT, padx=(6,0))
+
+status_var = tk.StringVar(value="Logging enabled (window must be focused).")
+status_label = tk.Label(frame, textvariable=status_var, anchor="w")
+status_label.pack(fill=tk.X, pady=(4,6))
+
+log_text = tk.Text(frame, height=15, width=80)
+log_text.pack(fill=tk.BOTH, expand=True)
+
+# Bind wrapper so key events are handled only while the app is focused
+# This is not a stealth/global logger — it records keys only when this app has focus.
+root.bind_all("<Key>", log_wrapper)
+
+# start UI
+root.mainloop()
+
+
+#run in terminal use command
+#py safe_key_capture.py
